@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package expense;
+
+option go_package = "proto/expensepb";
+
+service ExpenseService {
+  rpc GetExpenses(GetExpensesRequest) returns (GetExpensesResponse);
+}
+
+message GetExpensesRequest {
+  int32 user_id = 1;
+}
+
+message Expense {
+  int32 id = 1;
+  int32 user_id = 2;
+  string category = 3;
+  float amount = 4;
+  string description = 5;
+  string date = 6;
+}
+
+message GetExpensesResponse {
+  repeated Expense expenses = 1;
+}
