@@ -1,0 +1,103 @@
+basePath: /
+definitions:
+  main.Expense:
+    properties:
+      amount:
+        type: number
+      category:
+        type: string
+      date:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Backend API for expense tracking.
+  title: Expense Tracker API
+  version: "1.0"
+paths:
+  /add_expense:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Expense to add
+        in: body
+        name: expense
+        required: true
+        schema:
+          $ref: '#/definitions/main.Expense'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Expense added successfully
+          schema:
+            type: string
+      summary: Add a new expense
+  /delete_expense:
+    delete:
+      parameters:
+      - description: Expense ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: Deleted
+          schema:
+            type: string
+      summary: Delete expense by ID
+  /get_expenses:
+    get:
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/main.Expense'
+            type: array
+        "400":
+          description: User ID is required
+          schema:
+            type: string
+        "404":
+          description: No expenses found
+          schema:
+            type: string
+      summary: Get expenses by user ID
+  /update_expense:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Expense to update
+        in: body
+        name: expense
+        required: true
+        schema:
+          $ref: '#/definitions/main.Expense'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated
+          schema:
+            type: string
+      summary: Update expense
+swagger: "2.0"

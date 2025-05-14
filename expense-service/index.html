@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Expense Tracker</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            body {
+                background: linear-gradient(145deg, #0a0a0a, #111);
+                font-family: "Inter", sans-serif;
+                color: #e0e0e0;
+            }
+            .neon-glow {
+                box-shadow: 0 0 12px #7f5af0, 0 0 18px #7f5af0 inset;
+            }
+        </style>
+    </head>
+    <body class="p-8">
+        <div class="max-w-6xl mx-auto space-y-10">
+            <!-- Total Spent Card -->
+            <div
+                class="bg-gradient-to-tr from-indigo-900 via-black to-indigo-800 neon-glow text-white rounded-3xl p-10 shadow-2xl text-center">
+                <div class="text-sm uppercase tracking-widest text-indigo-300">
+                    Total Spent
+                </div>
+                <div
+                    id="totalSpent"
+                    class="text-6xl font-extrabold mt-3 tracking-tight">
+                    ₸0
+                </div>
+            </div>
+
+            <!-- Form + Expenses Block -->
+            <div class="space-y-10">
+                <!-- Form Row -->
+                <form
+                    id="expenseForm"
+                    class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <input type="hidden" name="user_id" value="1" />
+                    <input
+                        type="number"
+                        name="amount"
+                        placeholder="Amount"
+                        step="0.01"
+                        required
+                        class="col-span-1 rounded-xl px-4 py-3 bg-zinc-900 text-white placeholder-gray-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <input
+                        type="text"
+                        name="category"
+                        placeholder="Category"
+                        required
+                        class="col-span-1 rounded-xl px-4 py-3 bg-zinc-900 text-white placeholder-gray-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <input
+                        type="text"
+                        name="description"
+                        placeholder="Description"
+                        class="col-span-1 rounded-xl px-4 py-3 bg-zinc-900 text-white placeholder-gray-500 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <input
+                        type="date"
+                        name="date"
+                        required
+                        class="col-span-1 rounded-xl px-4 py-3 bg-zinc-900 text-white border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <button
+                        type="submit"
+                        class="col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-semibold shadow-md transition-transform transform hover:scale-105">
+                        + Add
+                    </button>
+                </form>
+
+                <!-- Expense Cards -->
+                <ul id="expensesList" class="space-y-6">
+                    <!-- Dynamically injected cards -->
+                </ul>
+            </div>
+        </div>
+
+        <script>
+            document.getElementById("expenseForm").onsubmit = async (e) => {
+                e.preventDefault();
+                const form = e.target;
+
+                const data = {
+                    user_id: 1,
+                    category: form.category.value.trim(),
+                    amount: parseFloat(form.amount.value.trim()),
+                    description: form.description.value.trim(),
+                    date: form.date.value,
+                };
+
+                const res = await fetch("/add_expense", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data),
+                });
+
+                if (res.ok) {
+                    form.reset();
+                    loadExpenses();
+                } else {
+                    alert("❌ Error adding expense");
+                }
+            };
+
+            async function loadExpenses() {
+                const res = await fetch("/get_expenses?user_id=1");
+                const ul = document.getElementById("expensesList");
+                const totalEl = document.getElementById("totalSpent");
+
+                try {
+                    const list = await res.json();
+                    ul.innerHTML = "";
+
+                    let total = 0;
+
+                    list.forEach((item) => {
+                        total += parseFloat(item.amount);
+                        const li = document.createElement("li");
+                        li.className =
+                            "bg-zinc-900 rounded-2xl p-6 flex items-center justify-between border border-zinc-700 shadow-xl hover:shadow-indigo-500/20 transition-all duration-200";
+                        li.innerHTML = `
+              <div>
+                <div class="text-xs text-zinc-500">${item.date}</div>
+                <div class="text-xl font-semibold text-white">${item.category}</div>
+                <div class="text-sm text-zinc-400">${item.description}</div>
+              </div>
+              <div class="flex items-center space-x-4">
+                <div class="text-indigo-400 font-bold text-xl">₸${item.amount}</div>
+                <button onclick="deleteExpense(${item.id})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-sm rounded-xl">delete</button>
+              </div>
+            `;
+                        ul.appendChild(li);
+                    });
+
+                    totalEl.textContent = `₸${total.toLocaleString()}`;
+                } catch (err) {
+                    ul.innerHTML =
+                        "<li class='text-red-500'>❌ Failed to load expenses</li>";
+                    totalEl.textContent = "₸0";
+                }
+            }
+
+            async function deleteExpense(id) {
+                await fetch(`/delete_expense?id=${id}`);
+                loadExpenses();
+            }
+
+            loadExpenses();
+        </script>
+    </body>
+</html>

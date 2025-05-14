@@ -1,12 +1,26 @@
 package main
 
+// @title Expense Tracker API
+// @version 1.0
+// @description Backend API for expense tracking.
+// @host localhost:8080
+// @BasePath /
+
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
+
+	_ "expense-tracker/expense-service/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
+
+	_ "github.com/lib/pq"
 )
+
+var db *sql.DB
 
 type Expense struct {
 	Id          int     `json:"id"`
@@ -17,11 +31,13 @@ type Expense struct {
 	Date        string  `json:"date"`
 }
 
-var expenses = []Expense{
-	{Id: 1, UserId: 1, Category: "Food", Amount: 20.5, Description: "Lunch", Date: "2025-05-10"},
-	{Id: 2, UserId: 1, Category: "Transport", Amount: 10.0, Description: "Taxi", Date: "2025-05-10"},
-}
-
+// @Summary Get expenses by user ID
+// @Produce json
+// @Param user_id query int true "User ID"
+// @Success 200 {array} Expense
+// @Failure 400 {string} string "User ID is required"
+// @Failure 404 {string} string "No expenses found"
+// @Router /get_expenses [get]
 func getExpenses(w http.ResponseWriter, r *http.Request) {
 	userId := r.URL.Query().Get("user_id")
 	if userId == "" {
@@ -29,36 +45,38 @@ func getExpenses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var filteredExpenses []Expense
-	for _, expense := range expenses {
-		if fmt.Sprintf("%d", expense.UserId) == userId {
-			filteredExpenses = append(filteredExpenses, expense)
+	rows, err := db.Query(`SELECT id, user_id, category, amount, description, date FROM expenses WHERE user_id = $1`, userId)
+	if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var expenses []Expense
+	for rows.Next() {
+		var e Expense
+		if err := rows.Scan(&e.Id, &e.UserId, &e.Category, &e.Amount, &e.Description, &e.Date); err != nil {
+			log.Println("❌ QUERY ERROR:", err)
+			return
 		}
+		expenses = append(expenses, e)
 	}
 
-	if len(filteredExpenses) == 0 {
+	if len(expenses) == 0 {
 		http.Error(w, "No expenses found for the given user", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(filteredExpenses)
+	json.NewEncoder(w).Encode(expenses)
 }
 
-func createExpense(w http.ResponseWriter, r *http.Request) {
-	var expense Expense
-	if err := json.NewDecoder(r.Body).Decode(&expense); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Генерация ID (в реальном приложении это будет делать база данных)
-	expense.Id = len(expenses) + 1
-	expenses = append(expenses, expense)
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(expense)
-}
+// @Summary Add a new expense
+// @Accept json
+// @Produce json
+// @Param expense body Expense true "Expense to add"
+// @Success 201 {string} string "Expense added successfully"
+// @Router /add_expense [post]
 func addExpense(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
@@ -74,10 +92,11 @@ func addExpense(w http.ResponseWriter, r *http.Request) {
 
 	query := `INSERT INTO expenses (user_id, category, amount, description, date)
 	          VALUES ($1, $2, $3, $4, $5)`
-
-	_, err = json.Exec(query, exp.UserId, exp.Category, exp.Amount, exp.Description, exp.Date)
+	_, err = db.Exec(query, exp.UserId, exp.Category, exp.Amount, exp.Description, exp.Date)
 	if err != nil {
-		http.Error(w, "Error inserting data: "+err.Error(), http.StatusInternalServerError)
+		log.Println("❌ INSERT ERROR:", err)
+http.Error(w, "Error inserting data: "+err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 
@@ -85,7 +104,10 @@ func addExpense(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Expense added successfully")
 }
 
-
+// @Summary Delete expense by ID
+// @Param id query int true "Expense ID"
+// @Success 204 {string} string "Deleted"
+// @Router /delete_expense [delete]
 func deleteExpense(w http.ResponseWriter, r *http.Request) {
 	expenseID := r.URL.Query().Get("id")
 	if expenseID == "" {
@@ -93,31 +115,68 @@ func deleteExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := strconv.Atoi(expenseID)
+	_, err := db.Exec(`DELETE FROM expenses WHERE id = $1`, expenseID)
 	if err != nil {
-		http.Error(w, "Invalid Expense ID", http.StatusBadRequest)
+		http.Error(w, "Failed to delete expense: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Поиск расхода и его удаление
-	for i, expense := range expenses {
-		if expense.Id == id {
-			expenses = append(expenses[:i], expenses[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// @Summary Update expense
+// @Accept json
+// @Produce json
+// @Param expense body Expense true "Expense to update"
+// @Success 200 {string} string "Updated"
+// @Router /update_expense [put]
+func updateExpense(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
+		return
 	}
 
-	http.Error(w, "Expense not found", http.StatusNotFound)
+	var exp Expense
+	err := json.NewDecoder(r.Body).Decode(&exp)
+	if err != nil {
+		http.Error(w, "Bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err = db.Exec(`
+		UPDATE expenses
+		SET user_id=$1, category=$2, amount=$3, description=$4, date=$5
+		WHERE id=$6`,
+		exp.UserId, exp.Category, exp.Amount, exp.Description, exp.Date, exp.Id)
+
+	if err != nil {
+		http.Error(w, "Failed to update expense: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "Expense updated successfully")
 }
 
 func main() {
+	var err error
+	db, err = sql.Open("postgres", "host=db port=5432 user=aknurturakhan dbname=expense_db sslmode=disable")
+	if err != nil {
+		log.Fatal("Error connecting to the database:", err)
+	}
+
 	http.HandleFunc("/get_expenses", getExpenses)
-	http.HandleFunc("/create_expense", createExpense)
-	http.HandleFunc("/delete_expense", deleteExpense)
 	http.HandleFunc("/add_expense", addExpense)
+	http.HandleFunc("/delete_expense", deleteExpense)
+	http.HandleFunc("/update_expense", updateExpense)
 
 
-	fmt.Println("🚀 Starting HTTP server on port 8080...")
+	http.Handle("/swagger/", http.StripPrefix("/swagger/", httpSwagger.WrapHandler))
+	http.Handle("/", http.FileServer(http.Dir("./")))
+
+	fmt.Println("🚀 Server running on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+	fmt.Println()
 }
+
+// ~/Downloads/expense-tracker/expense-service
